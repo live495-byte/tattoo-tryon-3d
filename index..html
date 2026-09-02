@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Реалистичная 3D-примерка татуировки</title>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+  <style>
+    .tattoo-3d,.tattoo-3d *{box-sizing:border-box}
+    .tattoo-3d{--bg:#08090b;--panel:#111318;--panel2:#191c22;--line:rgba(255,255,255,.09);--text:#f5f4ef;--muted:#9297a1;--acid:#dcff3f;width:100%;min-height:720px;color:var(--text);background:radial-gradient(circle at 52% -12%,rgba(220,255,63,.12),transparent 30%),var(--bg);border:1px solid var(--line);border-radius:24px;overflow:hidden;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;line-height:1.4}
+    .tattoo-3d button,.tattoo-3d input,.tattoo-3d select{font:inherit}
+    .t3-head{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:21px 25px;border-bottom:1px solid var(--line)}
+    .t3-kicker{margin:0 0 3px;color:var(--acid);font-size:11px;font-weight:850;letter-spacing:.17em;text-transform:uppercase}
+    .t3-head h1{margin:0;font-size:clamp(21px,3vw,32px);line-height:1.08;letter-spacing:-.035em}
+    .t3-head p:last-child{margin:6px 0 0;color:var(--muted);font-size:13px}
+    .t3-badge{flex:0 0 auto;padding:8px 12px;color:var(--muted);background:var(--panel);border:1px solid var(--line);border-radius:99px;font-size:12px}
+    .t3-layout{display:grid;grid-template-columns:270px minmax(340px,1fr) 290px;min-height:610px}
+    .t3-panel{padding:19px;background:rgba(17,19,24,.94);border-right:1px solid var(--line)}
+    .t3-panel-settings{border-right:0;border-left:1px solid var(--line)}
+    .t3-section+.t3-section{margin-top:19px;padding-top:18px;border-top:1px solid var(--line)}
+    .t3-section h2{margin:0 0 10px;color:#d9dbe0;font-size:11px;font-weight:850;letter-spacing:.1em;text-transform:uppercase}
+    .t3-help{margin:8px 0 0;color:var(--muted);font-size:11px}
+    .t3-upload{display:block;padding:15px 13px;background:var(--panel2);border:1px dashed rgba(255,255,255,.2);border-radius:13px;cursor:pointer;transition:.2s}
+    .t3-upload:hover{border-color:var(--acid);background:rgba(220,255,63,.06)}
+    .t3-upload input{position:absolute;opacity:0;pointer-events:none}
+    .t3-upload strong,.t3-upload span{display:block}.t3-upload strong{font-size:13px}.t3-upload span{margin-top:4px;color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .t3-select{width:100%;height:40px;padding:0 10px;color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:10px;outline:none}
+    .t3-select:focus{border-color:var(--acid)}
+    .t3-zones{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+    .t3-btn{min-height:39px;padding:8px 10px;color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:10px;cursor:pointer;transition:.15s}
+    .t3-btn:hover:not(:disabled){border-color:rgba(255,255,255,.27);background:#20242b}.t3-btn:disabled{opacity:.38;cursor:not-allowed}.t3-btn.active{color:#090a0b;background:var(--acid);border-color:var(--acid);font-weight:800}
+    .t3-primary{color:#090a0b;background:var(--acid);border-color:var(--acid);font-weight:850}.t3-primary:hover:not(:disabled){background:#e6ff6c;border-color:#e6ff6c}
+    .t3-view{display:flex;gap:6px}.t3-view .t3-btn{flex:1;padding:7px 4px;font-size:11px}
+    .t3-check{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:10px;color:#d7d9df;font-size:12px}
+    .t3-switch{position:relative;width:38px;height:22px;flex:0 0 auto}.t3-switch input{position:absolute;opacity:0}.t3-switch i{display:block;width:100%;height:100%;background:#2b2f37;border-radius:99px;transition:.2s}.t3-switch i:after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;background:white;border-radius:50%;transition:.2s}.t3-switch input:checked+i{background:var(--acid)}.t3-switch input:checked+i:after{transform:translateX(16px);background:#111}
+    .t3-field{margin-top:13px}.t3-field:first-child{margin-top:0}.t3-field-head{display:flex;justify-content:space-between;gap:8px;margin-bottom:6px;color:#cbd0d7;font-size:12px}.t3-value{color:var(--acid);font-variant-numeric:tabular-nums}.t3-range{width:100%;height:4px;margin:7px 0;accent-color:var(--acid);cursor:pointer}
+    .t3-stage{position:relative;min-width:0;min-height:610px;overflow:hidden;background:radial-gradient(circle at 50% 36%,#24282f 0,#11141a 42%,#090b0e 76%)}
+    #t3Viewport{position:absolute;inset:0;touch-action:none;overscroll-behavior:contain;-webkit-user-select:none;user-select:none}
+    #t3Viewport canvas{display:block;width:100%;height:100%;touch-action:none}
+    .t3-status{position:absolute;z-index:2;left:50%;top:50%;width:min(320px,80%);transform:translate(-50%,-50%);padding:17px;color:#dfe1e4;background:rgba(9,10,12,.84);border:1px solid var(--line);border-radius:13px;text-align:center;font-size:12px;backdrop-filter:blur(12px)}
+    .t3-status small{display:block;margin-top:5px;color:var(--muted)}
+    .t3-tip{position:absolute;z-index:3;left:50%;bottom:12px;transform:translateX(-50%);width:max-content;max-width:calc(100% - 20px);padding:7px 10px;color:#bfc3ca;background:rgba(8,9,11,.77);border:1px solid var(--line);border-radius:99px;font-size:11px;text-align:center;pointer-events:none}
+    .t3-actions{grid-column:1/-1;display:flex;justify-content:center;gap:8px;padding:13px 17px;background:#0d0f12;border-top:1px solid var(--line)}.t3-actions .t3-btn{min-width:120px}
+    .t3-toast{position:fixed;z-index:99999;left:50%;bottom:24px;padding:10px 14px;color:#090a0b;background:var(--acid);border-radius:10px;font-size:13px;font-weight:800;opacity:0;transform:translate(-50%,12px);transition:.22s;pointer-events:none}.t3-toast.show{opacity:1;transform:translate(-50%,0)}
+    @media(max-width:1050px){.t3-layout{grid-template-columns:240px minmax(320px,1fr)}.t3-panel-settings{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(210px,1fr));gap:20px;border-left:0;border-top:1px solid var(--line)}.t3-panel-settings .t3-section{margin:0;padding:0;border:0}}
+    @media(max-width:720px){.tattoo-3d{min-height:0;border-radius:0}.t3-head{align-items:flex-start;padding:17px}.t3-badge{display:none}.t3-layout{display:flex;flex-direction:column}.t3-panel{border-right:0;border-top:1px solid var(--line)}.t3-panel-main{order:1;padding:14px}.t3-panel-main .t3-section+.t3-section{margin-top:14px;padding-top:14px}.t3-stage{order:2;min-height:520px;height:68vh}.t3-panel-settings{order:3;display:block}.t3-panel-settings .t3-section+.t3-section{margin-top:18px;padding-top:17px;border-top:1px solid var(--line)}.t3-actions{order:4;flex-wrap:wrap}.t3-actions .t3-btn{flex:1 1 40%;min-width:0}}
+  </style>
+</head>
+<body style="margin:0;background:#050607">
+<section class="tattoo-3d" id="tattoo3DApp">
+  <header class="t3-head">
+    <div><p class="t3-kicker">Realistic 3D tattoo try-on</p><h1>Примерка на реалистичном теле</h1><p>Поворачивайте человека, выбирайте часть тела и наносите собственный эскиз.</p></div>
+    <div class="t3-badge">Модели MakeHuman · CC0</div>
+  </header>
+  <div class="t3-layout">
+    <aside class="t3-panel t3-panel-main">
+      <section class="t3-section">
+        <h2>1. Модель</h2>
+        <select class="t3-select" id="t3Gender"><option value="male">Мужчина</option><option value="female">Женщина</option></select>
+        <div class="t3-view" style="margin-top:8px"><button class="t3-btn" data-view="front">Спереди</button><button class="t3-btn" data-view="side">Сбоку</button><button class="t3-btn" data-view="back">Сзади</button></div>
+      </section>
+      <section class="t3-section">
+        <h2>2. Область тела</h2>
+        <div class="t3-zones" id="t3Zones">
+          <button class="t3-btn active" data-zone="chest" data-angle="50">Грудь</button><button class="t3-btn" data-zone="chest" data-angle="0">Спина</button>
+          <button class="t3-btn" data-zone="leftArm" data-angle="50">Левая рука</button><button class="t3-btn" data-zone="rightArm" data-angle="50">Правая рука</button>
+          <button class="t3-btn" data-zone="leftForearm" data-angle="50">Левое предпл.</button><button class="t3-btn" data-zone="rightForearm" data-angle="50">Правое предпл.</button>
+          <button class="t3-btn" data-zone="leftThigh" data-angle="50">Левое бедро</button><button class="t3-btn" data-zone="rightThigh" data-angle="50">Правое бедро</button>
+          <button class="t3-btn" data-zone="leftCalf" data-angle="50">Левая голень</button><button class="t3-btn" data-zone="rightCalf" data-angle="50">Правая голень</button>
+        </div>
+        <p class="t3-help">После выбора камера приблизит нужную область. Точное место можно указать нажатием прямо на коже.</p>
+      </section>
+      <section class="t3-section">
+        <h2>3. Эскиз</h2>
+        <label class="t3-upload"><input id="t3TattooInput" type="file" accept="image/png,image/jpeg,image/webp"><strong>Загрузить эскиз</strong><span id="t3FileName">PNG без фона — лучший вариант</span></label>
+        <div class="t3-check"><span>Удалить белый фон</span><label class="t3-switch"><input id="t3RemoveBg" type="checkbox"><i></i></label></div>
+        <div class="t3-check"><span>Отразить рисунок</span><label class="t3-switch"><input id="t3Flip" type="checkbox"><i></i></label></div>
+      </section>
+    </aside>
+
+    <main class="t3-stage">
+      <div id="t3Viewport"></div>
+      <div class="t3-status" id="t3Status">Загрузка реалистичной модели…<small>Мужская и женская модели находятся в папке models.</small></div>
+      <div class="t3-tip">Поворот — пальцем · масштаб — двумя пальцами · место тату — нажатием на кожу</div>
+    </main>
+
+    <aside class="t3-panel t3-panel-settings">
+      <section class="t3-section"><h2>Расположение</h2>
+        <div class="t3-field"><div class="t3-field-head"><span>Размер</span><span class="t3-value" id="t3ScaleValue">100%</span></div><input class="t3-range" id="t3Scale" type="range" min="25" max="240" value="100"></div>
+        <div class="t3-field"><div class="t3-field-head"><span>Поворот эскиза</span><span class="t3-value" id="t3RotationValue">0°</span></div><input class="t3-range" id="t3Rotation" type="range" min="-180" max="180" value="0"></div>
+        <div class="t3-field"><div class="t3-field-head"><span>Выше / ниже</span><span class="t3-value" id="t3VerticalValue">0</span></div><input class="t3-range" id="t3Vertical" type="range" min="-100" max="100" value="0"></div>
+        <div class="t3-field"><div class="t3-field-head"><span>Вокруг тела</span><span class="t3-value" id="t3AngleValue">50%</span></div><input class="t3-range" id="t3Angle" type="range" min="0" max="100" value="50"></div>
+      </section>
+      <section class="t3-section"><h2>Эффект татуировки</h2>
+        <div class="t3-field"><div class="t3-field-head"><span>Обхват поверхности</span><span class="t3-value" id="t3WrapValue">120°</span></div><input class="t3-range" id="t3Wrap" type="range" min="40" max="360" value="120"></div>
+        <div class="t3-field"><div class="t3-field-head"><span>Прозрачность</span><span class="t3-value" id="t3OpacityValue">82%</span></div><input class="t3-range" id="t3Opacity" type="range" min="10" max="100" value="82"></div>
+        <div class="t3-field"><div class="t3-field-head"><span>Интенсивность</span><span class="t3-value" id="t3InkValue">92%</span></div><input class="t3-range" id="t3Ink" type="range" min="45" max="135" value="92"></div>
+        <p class="t3-help">До 180–220° используется объёмная decal-проекция. Для полного рукава 360° потребуется отдельная UV-развёртка эскиза.</p>
+      </section>
+    </aside>
+
+    <footer class="t3-actions"><button class="t3-btn" id="t3Before" disabled>Удерживать: ДО</button><button class="t3-btn" id="t3Reset">Сбросить</button><button class="t3-btn t3-primary" id="t3Download" disabled>Сохранить ракурс</button></footer>
+  </div>
+  <div class="t3-toast" id="t3Toast"></div>
+</section>
+
+<script type="text/plain" id="legacyProcedural3D">
+const app=document.getElementById('tattoo3DApp');
+const $=id=>app.querySelector('#'+id);
+const status=$('t3Status');
+const ui={gender:$('t3Gender'),file:$('t3TattooInput'),fileName:$('t3FileName'),removeBg:$('t3RemoveBg'),flip:$('t3Flip'),scale:$('t3Scale'),rotation:$('t3Rotation'),vertical:$('t3Vertical'),angle:$('t3Angle'),wrap:$('t3Wrap'),opacity:$('t3Opacity'),ink:$('t3Ink')};
+const labels={scale:$('t3ScaleValue'),rotation:$('t3RotationValue'),vertical:$('t3VerticalValue'),angle:$('t3AngleValue'),wrap:$('t3WrapValue'),opacity:$('t3OpacityValue'),ink:$('t3InkValue')};
+let THREE,OrbitControls,renderer,scene,camera,controls,body,parts={},overlays=[],tattooImage=null,tattooSource=null,currentZone='chest',ready=false,pointerStart=null;
+
+function toast(text){const el=$('t3Toast');el.textContent=text;el.classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.classList.remove('show'),2200)}
+function updateLabels(){labels.scale.textContent=ui.scale.value+'%';labels.rotation.textContent=ui.rotation.value+'°';labels.vertical.textContent=ui.vertical.value;labels.angle.textContent=ui.angle.value+'%';labels.wrap.textContent=ui.wrap.value+'°';labels.opacity.textContent=ui.opacity.value+'%';labels.ink.textContent=ui.ink.value+'%'}
+
+try{
+  THREE=await import('three');
+  ({OrbitControls}=await import('three/addons/controls/OrbitControls.js'));
+  init();
+}catch(error){console.error(error);status.innerHTML='Не удалось загрузить 3D-модуль.<small>Проверьте интернет и разрешение сайта на загрузку cdn.jsdelivr.net.</small>'}
+
+function init(){
+  const host=$('t3Viewport');
+  scene=new THREE.Scene();scene.background=new THREE.Color(0x0c0e12);scene.fog=new THREE.Fog(0x0c0e12,10,19);
+  camera=new THREE.PerspectiveCamera(34,1,.1,40);camera.position.set(0,1.1,11);
+  renderer=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:true,powerPreference:'high-performance'});renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.outputColorSpace=THREE.SRGBColorSpace;host.appendChild(renderer.domElement);
+  controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.dampingFactor=.07;controls.target.set(0,.6,0);controls.minDistance=5;controls.maxDistance=15;controls.enablePan=false;
+  scene.add(new THREE.HemisphereLight(0xe7efff,0x33281f,2.4));
+  const key=new THREE.DirectionalLight(0xffe7d5,3.4);key.position.set(4,7,6);key.castShadow=true;key.shadow.mapSize.set(1024,1024);scene.add(key);
+  const rim=new THREE.DirectionalLight(0x8aa7ff,2.2);rim.position.set(-5,4,-4);scene.add(rim);
+  const floor=new THREE.Mesh(new THREE.CircleGeometry(4.2,64),new THREE.MeshStandardMaterial({color:0x15181d,roughness:.88}));floor.rotation.x=-Math.PI/2;floor.position.y=-3.65;floor.receiveShadow=true;scene.add(floor);
+  buildBody(ui.gender.value);selectZone('chest');setView('front');resize();
+  new ResizeObserver(resize).observe(host);renderer.setAnimationLoop(()=>{controls.update();renderer.render(scene,camera)});
+  ready=true;status.hidden=true;$('t3Download').disabled=false;
+  bind3DEvents();
+}
+
+function skinMaterial(){return new THREE.MeshStandardMaterial({color:0xb98668,roughness:.72,metalness:0,emissive:0x000000,emissiveIntensity:.18})}
+function addPart(name,geometry,position,scale=[1,1,1],rotation=[0,0,0],zone=name){
+  const mesh=new THREE.Mesh(geometry,skinMaterial());mesh.name=name;mesh.position.set(...position);mesh.scale.set(...scale);mesh.rotation.set(...rotation);mesh.castShadow=true;mesh.receiveShadow=true;mesh.userData.zone=zone;body.add(mesh);parts[name]=mesh;return mesh;
+}
+function buildBody(gender){
+  if(body)scene.remove(body);body=new THREE.Group();parts={};overlays=[];scene.add(body);
+  const female=gender==='female',shoulder=female ? .9 : 1.06,hip=female ? 1.08 : .92;
+  addPart('head',new THREE.SphereGeometry(.46,32,24),[0,3.85,0],[.92,1.08,.92],undefined,'head');
+  addPart('neck',new THREE.CapsuleGeometry(.2,.27,8,20),[0,3.3,0],undefined,undefined,'chest');
+  addPart('torso',new THREE.CapsuleGeometry(.72,1.45,14,32),[0,2.05,0],[shoulder,1,female ? .69 : .75],undefined,'chest');
+  addPart('pelvis',new THREE.SphereGeometry(.73,32,24),[0,.72,0],[hip,.68,.72],undefined,'chest');
+  const armX=female ? .88 : 1.02;
+  addPart('leftUpperArm',new THREE.CapsuleGeometry(.245,.9,10,24),[-armX,2.32,0],[1,1,1], [0,0,-.09],'leftArm');
+  addPart('rightUpperArm',new THREE.CapsuleGeometry(.245,.9,10,24),[armX,2.32,0],[1,1,1], [0,0,.09],'rightArm');
+  addPart('leftForearm',new THREE.CapsuleGeometry(.205,.92,10,24),[-1.11,1.18,0],[1,1,1], [0,0,-.03],'leftForearm');
+  addPart('rightForearm',new THREE.CapsuleGeometry(.205,.92,10,24),[1.11,1.18,0],[1,1,1], [0,0,.03],'rightForearm');
+  addPart('leftHand',new THREE.CapsuleGeometry(.18,.28,8,20),[-1.14,.42,0],[.9,1,.62],undefined,'leftForearm');
+  addPart('rightHand',new THREE.CapsuleGeometry(.18,.28,8,20),[1.14,.42,0],[.9,1,.62],undefined,'rightForearm');
+  const legX=female ? .43 : .39;
+  addPart('leftThigh',new THREE.CapsuleGeometry(female ? .34 : .37,1.15,12,28),[-legX,-.48,0],[1,1,.9],undefined,'leftThigh');
+  addPart('rightThigh',new THREE.CapsuleGeometry(female ? .34 : .37,1.15,12,28),[legX,-.48,0],[1,1,.9],undefined,'rightThigh');
+  addPart('leftCalf',new THREE.CapsuleGeometry(.27,1.18,12,28),[-legX,-2.02,0],[1,1,.88],undefined,'leftCalf');
+  addPart('rightCalf',new THREE.CapsuleGeometry(.27,1.18,12,28),[legX,-2.02,0],[1,1,.88],undefined,'rightCalf');
+  addPart('leftFoot',new THREE.CapsuleGeometry(.22,.46,8,20),[-legX,-3.12,.18],[1,.72,1.5],[Math.PI/2,0,0],'leftCalf');
+  addPart('rightFoot',new THREE.CapsuleGeometry(.22,.46,8,20),[legX,-3.12,.18],[1,.72,1.5],[Math.PI/2,0,0],'rightCalf');
+}
+
+function zoneParts(zone){const map={chest:['torso'],leftArm:['leftUpperArm','leftForearm'],rightArm:['rightUpperArm','rightForearm'],leftForearm:['leftForearm'],rightForearm:['rightForearm'],leftThigh:['leftThigh'],rightThigh:['rightThigh'],leftCalf:['leftCalf'],rightCalf:['rightCalf'],head:['head']};return map[zone]||[zone]}
+function clearOverlays(){overlays.forEach(o=>o.parent&&o.parent.remove(o));overlays=[];Object.values(parts).forEach(p=>p.material.emissive.setHex(0x000000))}
+function selectZone(zone){currentZone=zone;clearOverlays();zoneParts(zone).forEach(name=>{const mesh=parts[name];if(!mesh)return;mesh.material.emissive.setHex(0x263000);const material=new THREE.MeshStandardMaterial({transparent:true,depthWrite:false,alphaTest:.015,roughness:.82,metalness:0,polygonOffset:true,polygonOffsetFactor:-3});const overlay=new THREE.Mesh(mesh.geometry,material);overlay.scale.set(1.008,1.008,1.008);mesh.add(overlay);overlays.push(overlay)});refreshTattoo();app.querySelectorAll('[data-zone]').forEach(b=>b.classList.toggle('active',b.dataset.zone===zone&&Number(b.dataset.angle||50)===Number(ui.angle.value)))}
+
+function preprocess(){
+  if(!tattooImage)return null;const max=1200,ratio=Math.min(1,max/Math.max(tattooImage.naturalWidth,tattooImage.naturalHeight));const c=document.createElement('canvas');c.width=Math.max(1,Math.round(tattooImage.naturalWidth*ratio));c.height=Math.max(1,Math.round(tattooImage.naturalHeight*ratio));const x=c.getContext('2d',{willReadFrequently:true});x.drawImage(tattooImage,0,0,c.width,c.height);
+  if(ui.removeBg.checked){const d=x.getImageData(0,0,c.width,c.height);for(let i=0;i<d.data.length;i+=4){const r=d.data[i],g=d.data[i+1],b=d.data[i+2],maxc=Math.max(r,g,b),minc=Math.min(r,g,b),lum=.2126*r+.7152*g+.0722*b;if(maxc-minc<34&&lum>188)d.data[i+3]=Math.round(d.data[i+3]*Math.max(0,(245-lum)/57))}x.putImageData(d,0,0)}return c
+}
+function refreshTattoo(){
+  if(!ready)return;if(!tattooImage){overlays.forEach(o=>o.visible=false);$('t3Before').disabled=true;return}tattooSource=preprocess();const c=document.createElement('canvas');c.width=c.height=1024;const x=c.getContext('2d');const scale=Number(ui.scale.value)/100,wrap=Number(ui.wrap.value)/360;let w=1024*Math.min(.98,.27*scale+wrap*.42),h=w/(tattooSource.width/tattooSource.height||1);if(h>920*scale) {h=920*scale;w=h*(tattooSource.width/tattooSource.height||1)}const cx=Number(ui.angle.value)/100*1024,cy=512+Number(ui.vertical.value)*3.25,rot=Number(ui.rotation.value)*Math.PI/180;
+  const drawAt=centerX=>{x.save();x.globalAlpha=Math.min(1,Number(ui.ink.value)/100);x.translate(centerX,cy);x.rotate(rot);x.scale(ui.flip.checked?-1:1,1);x.drawImage(tattooSource,-w/2,-h/2,w,h);x.restore()};
+  drawAt(cx);
+  /* Копии по краям обеспечивают непрерывность UV-развёртки при обхвате. */
+  if(cx-w/2<0)drawAt(cx+1024);if(cx+w/2>1024)drawAt(cx-1024);
+  const texture=new THREE.CanvasTexture(c);texture.colorSpace=THREE.SRGBColorSpace;texture.needsUpdate=true;overlays.forEach(o=>{if(o.material.map)o.material.map.dispose();o.material.map=texture;o.material.opacity=Number(ui.opacity.value)/100;o.material.needsUpdate=true;o.visible=true});$('t3Before').disabled=false
+}
+
+function loadTattoo(file){if(!file||!file.type.startsWith('image/'))return toast('Выберите PNG, JPG или WebP');const img=new Image(),url=URL.createObjectURL(file);img.onload=()=>{URL.revokeObjectURL(url);tattooImage=img;ui.fileName.textContent=file.name;refreshTattoo();toast('Эскиз нанесён на выбранную область')};img.onerror=()=>{URL.revokeObjectURL(url);toast('Не удалось открыть изображение')};img.src=url}
+function setView(view){const positions={front:[0,1.05,11],side:[10,1.05,0],back:[0,1.05,-11]};const p=positions[view];camera.position.set(...p);controls.target.set(0,.55,0);controls.update()}
+function resize(){if(!renderer)return;const host=$('t3Viewport'),w=Math.max(1,host.clientWidth),h=Math.max(1,host.clientHeight);renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix()}
+
+function bind3DEvents(){
+  ui.gender.addEventListener('change',()=>{buildBody(ui.gender.value);selectZone(currentZone);refreshTattoo()});
+  ui.file.addEventListener('change',()=>loadTattoo(ui.file.files[0]));
+  [ui.removeBg,ui.flip].forEach(el=>el.addEventListener('change',refreshTattoo));
+  [ui.scale,ui.rotation,ui.vertical,ui.angle,ui.wrap,ui.opacity,ui.ink].forEach(el=>el.addEventListener('input',()=>{updateLabels();refreshTattoo()}));
+  app.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>setView(b.dataset.view)));
+  app.querySelectorAll('[data-zone]').forEach(b=>b.addEventListener('click',()=>{ui.angle.value=b.dataset.angle||50;updateLabels();selectZone(b.dataset.zone);refreshTattoo()}));
+  renderer.domElement.addEventListener('pointerdown',e=>pointerStart={x:e.clientX,y:e.clientY});
+  renderer.domElement.addEventListener('pointerup',e=>{if(!pointerStart||Math.hypot(e.clientX-pointerStart.x,e.clientY-pointerStart.y)>7)return;const rect=renderer.domElement.getBoundingClientRect(),mouse=new THREE.Vector2((e.clientX-rect.left)/rect.width*2-1,-(e.clientY-rect.top)/rect.height*2+1),ray=new THREE.Raycaster();ray.setFromCamera(mouse,camera);const hit=ray.intersectObjects(Object.values(parts),false)[0];if(hit){selectZone(hit.object.userData.zone);refreshTattoo()}pointerStart=null});
+  const before=$('t3Before');const hide=()=>{overlays.forEach(o=>o.visible=false);before.classList.add('active');before.textContent='Сейчас: БЕЗ ТАТУ'};const show=()=>{overlays.forEach(o=>o.visible=!!tattooImage);before.classList.remove('active');before.textContent='Удерживать: ДО'};before.addEventListener('pointerdown',hide);['pointerup','pointerleave','pointercancel'].forEach(t=>before.addEventListener(t,show));
+  $('t3Reset').addEventListener('click',()=>{ui.scale.value=100;ui.rotation.value=0;ui.vertical.value=0;ui.angle.value=50;ui.wrap.value=120;ui.opacity.value=82;ui.ink.value=92;updateLabels();setView('front');selectZone('chest');refreshTattoo();toast('Настройки сброшены')});
+  $('t3Download').addEventListener('click',()=>{renderer.render(scene,camera);renderer.domElement.toBlob(blob=>{if(!blob)return toast('Не удалось сохранить ракурс');const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`tattoo-3d-${Date.now()}.png`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1200);toast('Ракурс сохранён')},'image/png',1)});
+}
+updateLabels();
+</script>
+<script type="module" src="realistic-3d.js"></script>
+</body>
+</html>
