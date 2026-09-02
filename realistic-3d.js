@@ -36,6 +36,12 @@ let currentZone = 'chest';
 let ready = false;
 let loadingToken = 0;
 let pointerStart = null;
+let tattooDragActive = false;
+let tattooDragPointerId = null;
+let tattooMoveMode = false;
+let pendingMoveHit = null;
+let moveFrame = 0;
+let moveButton = null;
 
 const zoneConfig = {
   chest:        { target: [0, 1.22, 0], radius: 6.0 },
@@ -102,6 +108,7 @@ function init() {
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   host.appendChild(renderer.domElement);
+  installMoveButton(host);
 
   orbit = new OrbitControls(camera, renderer.domElement);
   orbit.enableDamping = true;
@@ -152,6 +159,279 @@ function init() {
   bindEvents();
   resize();
   loadModel(ui.gender.value);
+}
+
+
+function installMoveButton(host) {
+  if (getComputedStyle(host).position === 'static') {
+    host.style.position = 'relative';
+  }
+
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.id = 't3MoveTattoo';
+  button.textContent = '✥ Перемещать тату';
+  button.title = 'Включите режим и перетаскивайте татуировку пальцем или мышью';
+
+  Object.assign(button.style, {
+    position: 'absolute',
+    left: '50%',
+    bottom: '18px',
+    transform: 'translateX(-50%)',
+    zIndex: '30',
+    padding: '11px 16px',
+    borderRadius: '999px',
+    border: '1px solid rgba(255,255,255,.18)',
+    background: 'rgba(20,22,26,.86)',
+    color: '#fff',
+    font: '600 13px/1.1 system-ui, sans-serif',
+    boxShadow: '0 8px 28px rgba(0,0,0,.35)',
+    backdropFilter: 'blur(10px)',
+    WebkitBackdropFilter: 'blur(10px)',
+    cursor: 'pointer',
+    touchAction: 'manipulation',
+    transition: '.18s ease'
+  });
+
+  button.addEventListener('click', event => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (!tattooImage || !ready) {
+      toast('Сначала загрузите эскиз');
+      return;
+    }
+
+    tattooMoveMode = !tattooMoveMode;
+    updateMoveButton();
+
+    toast(
+      tattooMoveMode
+        ? 'Режим перемещения включён — тяните тату по телу'
+        : 'Вращение модели снова включено'
+    );
+  });
+
+  host.appendChild(button);
+  moveButton = button;
+  updateMoveButton();
+}
+
+function updateMoveButton() {
+  if (!moveButton || !renderer) return;
+
+  const unavailable = !tattooImage || !ready;
+  moveButton.disabled = unavailable;
+  moveButton.style.opacity = unavailable ? '.45' : '1';
+  moveButton.style.cursor = unavailable ? 'not-allowed' : 'pointer';
+  moveButton.style.background = tattooMoveMode
+    ? 'linear-gradient(135deg, #a02cff, #4d62ff)'
+    : 'rgba(20,22,26,.86)';
+  moveButton.textContent = tattooMoveMode
+    ? '✓ Перетаскивайте тату'
+    : '✥ Перемещать тату';
+
+  if (renderer?.domElement) {
+    renderer.domElement.style.cursor = tattooMoveMode ? 'crosshair' : 'grab';
+  }
+}
+
+function eventToNdc(event) {
+  const rect = renderer.domElement.getBoundingClientRect();
+  return new THREE.Vector2(
+    (event.clientX - rect.left) / rect.width * 2 - 1,
+    -(event.clientY - rect.top) / rect.height * 2 + 1
+  );
+}
+
+function getDecalHit(ndc) {
+  if (!decalGroup?.children?.length) return null;
+  const ray = new THREE.Raycaster();
+  ray.setFromCamera(ndc, camera);
+  return ray.intersectObjects(decalGroup.children, true)[0] || null;
+}
+
+function queueTattooMove(hit) {
+  pendingMoveHit = hit;
+  if (moveFrame) return;
+
+  moveFrame = requestAnimationFrame(() => {
+    moveFrame = 0;
+    const next = pendingMoveHit;
+    pendingMoveHit = null;
+    if (!next) return;
+
+    storeHit(next);
+    rebuildDecal();
+  });
+}
+
+function startTattooDrag(event, force = false) {
+  if (!ready || !tattooImage || !bodyMeshes.length) return false;
+
+  const ndc = eventToNdc(event);
+  const overTattoo = Boolean(getDecalHit(ndc));
+
+  if (!force && !overTattoo) return false;
+
+  tattooDragActive = true;
+  tattooDragPointerId = event.pointerId;
+  orbit.enabled = false;
+
+  try {
+    renderer.domElement.setPointerCapture(event.pointerId);
+  } catch (_) {}
+
+  const hit = getRayHit(ndc);
+  if (hit) queueTattooMove(hit);
+
+  return true;
+}
+
+function stopTattooDrag(event) {
+  if (!tattooDragActive) return false;
+
+  tattooDragActive = false;
+  pendingMoveHit = null;
+
+  if (moveFrame) {
+    cancelAnimationFrame(moveFrame);
+    moveFrame = 0;
+  }
+
+  try {
+    if (event && renderer.domElement.hasPointerCapture(event.pointerId)) {
+      renderer.domElement.releasePointerCapture(event.pointerId);
+    }
+  } catch (_) {}
+
+  tattooDragPointerId = null;
+  orbit.enabled = true;
+  updateMoveButton();
+  return true;
+}
+
+function shouldAutoRemoveBackground(image) {
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 32;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(image, 0, 0, 32, 32);
+    const data = ctx.getImageData(0, 0, 32, 32).data;
+
+    const points = [
+      [0, 0], [31, 0], [0, 31], [31, 31],
+      [16, 0], [16, 31], [0, 16], [31, 16]
+    ];
+
+    const samples = points.map(([x, y]) => {
+      const i = (y * 32 + x) * 4;
+      return [data[i], data[i + 1], data[i + 2], data[i + 3]];
+    });
+
+    if (samples.some(s => s[3] < 235)) return false;
+
+    const avg = [0, 1, 2].map(c =>
+      samples.reduce((sum, s) => sum + s[c], 0) / samples.length
+    );
+
+    const luminance = .2126 * avg[0] + .7152 * avg[1] + .0722 * avg[2];
+    if (luminance < 175) return false;
+
+    const maxDistance = Math.max(...samples.map(s =>
+      Math.hypot(s[0] - avg[0], s[1] - avg[1], s[2] - avg[2])
+    ));
+
+    return maxDistance < 48;
+  } catch (_) {
+    return false;
+  }
+}
+
+function removeEdgeConnectedBackground(context, width, height) {
+  const image = context.getImageData(0, 0, width, height);
+  const data = image.data;
+  const count = width * height;
+
+  const sampleCoords = [
+    [0, 0], [width - 1, 0], [0, height - 1], [width - 1, height - 1],
+    [Math.floor(width / 2), 0], [Math.floor(width / 2), height - 1]
+  ];
+
+  const bg = [0, 0, 0];
+  let valid = 0;
+
+  for (const [x, y] of sampleCoords) {
+    const i = (y * width + x) * 4;
+    if (data[i + 3] < 230) continue;
+    bg[0] += data[i];
+    bg[1] += data[i + 1];
+    bg[2] += data[i + 2];
+    valid++;
+  }
+
+  if (!valid) return;
+  bg[0] /= valid; bg[1] /= valid; bg[2] /= valid;
+
+  const visited = new Uint8Array(count);
+  const queue = new Int32Array(count);
+  let head = 0;
+  let tail = 0;
+  const threshold = 82;
+
+  const qualifies = index => {
+    const i = index * 4;
+    if (data[i + 3] < 8) return true;
+    const d = Math.hypot(
+      data[i] - bg[0],
+      data[i + 1] - bg[1],
+      data[i + 2] - bg[2]
+    );
+    return d <= threshold;
+  };
+
+  const push = index => {
+    if (index < 0 || index >= count || visited[index] || !qualifies(index)) return;
+    visited[index] = 1;
+    queue[tail++] = index;
+  };
+
+  for (let x = 0; x < width; x++) {
+    push(x);
+    push((height - 1) * width + x);
+  }
+  for (let y = 0; y < height; y++) {
+    push(y * width);
+    push(y * width + width - 1);
+  }
+
+  while (head < tail) {
+    const index = queue[head++];
+    const x = index % width;
+    const y = (index / width) | 0;
+    const i = index * 4;
+
+    const d = Math.hypot(
+      data[i] - bg[0],
+      data[i + 1] - bg[1],
+      data[i + 2] - bg[2]
+    );
+
+    // Небольшое feather-сглаживание края.
+    if (d < 30) {
+      data[i + 3] = 0;
+    } else {
+      const keep = Math.max(0, Math.min(1, (d - 30) / (threshold - 30)));
+      data[i + 3] = Math.round(data[i + 3] * keep);
+    }
+
+    if (x > 0) push(index - 1);
+    if (x < width - 1) push(index + 1);
+    if (y > 0) push(index - width);
+    if (y < height - 1) push(index + width);
+  }
+
+  context.putImageData(image, 0, 0);
 }
 
 function disposeObject(root) {
@@ -328,6 +608,8 @@ async function loadModel(gender) {
   selectedHit = null;
   bodyMeshes = [];
   clearDecals();
+  tattooMoveMode = false;
+  updateMoveButton();
 
   $('t3Download').disabled = true;
   status.hidden = false;
@@ -357,10 +639,9 @@ async function loadModel(gender) {
       throw new Error('Body meshes not found');
     }
 
-    // Только старые модели слегка морфим, V2 оставляем как есть.
-    if (!result.url.includes('-v2.glb')) {
-      applyBodyProfile(modelRoot, gender);
-    }
+    // V3: старые модели больше не деформируем по вершинам.
+    // Это устраняет разрывы/ступени на руках и других стыках.
+    // Реальные различия мужчина/женщина должны идти из отдельных GLB.
 
     fitModel(modelRoot);
     scene.add(modelRoot);
@@ -371,6 +652,7 @@ async function loadModel(gender) {
     ready = true;
     status.hidden = true;
     $('t3Download').disabled = false;
+    updateMoveButton();
 
     setZone(currentZone, true);
 
@@ -469,7 +751,7 @@ function storeHit(hit) {
 function processedTattoo() {
   if (!tattooImage) return null;
 
-  const maxSide = 1400;
+  const maxSide = 1100;
   const ratio = Math.min(
     1,
     maxSide / Math.max(tattooImage.naturalWidth, tattooImage.naturalHeight)
@@ -483,24 +765,7 @@ function processedTattoo() {
   context.drawImage(tattooImage, 0, 0, canvas.width, canvas.height);
 
   if (ui.removeBg.checked) {
-    const image = context.getImageData(0, 0, canvas.width, canvas.height);
-
-    for (let i = 0; i < image.data.length; i += 4) {
-      const r = image.data[i];
-      const g = image.data[i + 1];
-      const b = image.data[i + 2];
-
-      const max = Math.max(r, g, b);
-      const min = Math.min(r, g, b);
-      const luminance = .2126 * r + .7152 * g + .0722 * b;
-
-      if (max - min < 40 && luminance > 176) {
-        const fade = Math.max(0, Math.min(1, (246 - luminance) / 70));
-        image.data[i + 3] = Math.round(image.data[i + 3] * fade);
-      }
-    }
-
-    context.putImageData(image, 0, 0);
+    removeEdgeConnectedBackground(context, canvas.width, canvas.height);
   }
 
   return canvas;
@@ -666,6 +931,14 @@ function loadTattoo(file) {
     tattooImage = image;
     ui.fileName.textContent = file.name;
 
+    // Если у изображения очевидный белый/однотонный фон — включаем
+    // удаление фона автоматически. Внутренние белые детали рисунка сохраняются.
+    if (shouldAutoRemoveBackground(image)) {
+      ui.removeBg.checked = true;
+    }
+
+    updateMoveButton();
+
     // Сначала пытаемся поставить по центру текущей области.
     if (!selectedHit) {
       const placed = placeFromCameraCenter(true);
@@ -750,14 +1023,47 @@ function bindEvents() {
     });
   });
 
+  // V3: тату можно хватать прямо мышью/пальцем и перетаскивать по коже.
+  // Если включена кнопка "Перемещать тату", любое движение по телу двигает тату,
+  // а вращение модели временно отключается.
   renderer.domElement.addEventListener('pointerdown', event => {
+    const ndc = eventToNdc(event);
+    const overTattoo = Boolean(tattooImage && getDecalHit(ndc));
+
+    if (tattooMoveMode || overTattoo) {
+      if (startTattooDrag(event, tattooMoveMode)) {
+        pointerStart = null;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        return;
+      }
+    }
+
     pointerStart = {
       x: event.clientX,
       y: event.clientY
     };
-  });
+  }, true);
+
+  renderer.domElement.addEventListener('pointermove', event => {
+    if (!tattooDragActive || event.pointerId !== tattooDragPointerId) return;
+
+    const hit = getRayHit(eventToNdc(event));
+    if (hit) queueTattooMove(hit);
+
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }, true);
 
   renderer.domElement.addEventListener('pointerup', event => {
+    if (tattooDragActive && event.pointerId === tattooDragPointerId) {
+      stopTattooDrag(event);
+      toast('Татуировка перемещена');
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      return;
+    }
+
     if (!pointerStart) return;
 
     const distance = Math.hypot(
@@ -767,17 +1073,10 @@ function bindEvents() {
 
     pointerStart = null;
 
-    // Если пользователь вращал модель, не считаем это выбором точки.
+    // Обычный короткий клик по коже также переносит тату в эту точку.
     if (distance > 7 || !ready || !bodyMeshes.length) return;
 
-    const rect = renderer.domElement.getBoundingClientRect();
-
-    const mouse = new THREE.Vector2(
-      (event.clientX - rect.left) / rect.width * 2 - 1,
-      -(event.clientY - rect.top) / rect.height * 2 + 1
-    );
-
-    const hit = getRayHit(mouse);
+    const hit = getRayHit(eventToNdc(event));
 
     if (!hit) {
       toast('Попробуйте нажать точно на поверхность кожи');
@@ -793,7 +1092,13 @@ function bindEvents() {
     } else {
       toast('Место выбрано — теперь загрузите эскиз');
     }
-  });
+  }, true);
+
+  renderer.domElement.addEventListener('pointercancel', event => {
+    if (tattooDragActive) stopTattooDrag(event);
+    pointerStart = null;
+  }, true);
+
 
   const before = $('t3Before');
 
@@ -822,6 +1127,8 @@ function bindEvents() {
     ui.opacity.value = 82;
     ui.ink.value = 92;
 
+    tattooMoveMode = false;
+    updateMoveButton();
     updateLabels();
     setZone('chest', true);
     toast('Настройки сброшены');
